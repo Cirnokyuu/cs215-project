@@ -1,0 +1,421 @@
+\documentclass[10pt,a4paper,oneside]{article}
+%\documentclass{article}
+\usepackage{diagbox}
+\usepackage{algorithm}
+\usepackage{soul, color, xcolor}
+\usepackage{minted}% 语法高亮和代码样式设置方面更加强大和灵活
+\usepackage{listings}% 引入listings包，用于在文档中插入代码，并可自定义代码样式
+\usepackage{ctex}
+\usepackage{amsmath}
+\usepackage{color}
+%\usepackage{olymp}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\geometry{a4paper,scale=0.75}
+\usepackage[colorlinks,urlcolor=blue,linkcolor=blue,citecolor=blue]{hyperref}
+
+\title{Exact enumeration of satisable 2-SAT formulae 阅读笔记}
+\author{12312608 熊子豪}
+\date{October 2024}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{CS215 Project}
+\fancyhead[R]{Exact enumeration of satisable 2-SAT formulae 阅读笔记}
+\fancyfoot[C]{\thepage}
+
+\newtheorem{definition}{Definition}[section]
+\newtheorem{theorem}[definition]{Theorem}
+\newtheorem{lemma}[definition]{Lemma}
+\newtheorem{proposition}[definition]{Proposition}
+\newtheorem*{Proof}{Proof}
+
+\begin{document}
+
+\begin{center}
+{\textbf {\huge Exact enumeration of satisable 2-SAT formulae 阅读笔记}}\\[5mm]
+{\large 12312608 熊子豪} \\[5mm]
+\end{center}
+
+\tableofcontents  % 生成目录
+
+\newpage
+
+\section{前言}
+
+对于很多图计数问题，传统方法不免在系数层面上操作。高中时期我偶然阅读了 \cite{de2019symbolic}，其中提到了对 symbolic method 进行一些扩展，引入 GGF 和箭积，使得诸如 DAG 计数的问题直接在 GF 的层面上得到解决。我觉得这是一个很优美的思路，值得学习。
+
+而最近我为这次 project 搜索资料时，发现这两位作者使用之前同样的思路，优雅地解决了可满足 2-SAT 的计数这样一个很有实际意义的问题，这激发了我的兴趣。本文是 \cite{dovgal2021exact} 的阅读笔记，对其主要的思路进行了整理。
+
+\section{2-CNF、蕴图与可满足性}
+
+这一节主要给出 2-CNF 问题的定义，以及给出可满足的 2-CNF 的经典特征。
+
+\subsection{定义与符号说明}
+
+若无特殊说明，我们用 $\land, \lor, \to$ 表示析取、合取与蕴涵，用 $\neg x$ 或 $\overline{x}$ 来表示 $x$ 的否定。
+
+\begin{definition}[CNF]
+    定义布尔变量 $x$ 的 literals 为 $x$ 及其否定 $\overline{x}$。$n$ 个变量上的 Conjunctive Normal Form (CNF) 是一组子句的合取，其中每个子句都是不同变量 的 literals 的析取。
+\end{definition}
+
+\begin{definition}[2-SAT 与可满足性]
+    2-CNF（或 2-SAT 公式）是每个子句恰好包含两个不同的 literals 的 CNF。
+    如果存在一种布尔值分配，使得 CNF 每个子句都被满足，则称该 CNF 是可满足的。
+\end{definition}
+
+\begin{definition}[蕴图]
+    对于 $n$ 个变量（不妨为 $1,2,\ldots ,n$）、$m$ 个子句的 2-CNF，定义其蕴图 (Implication digraph) 为 $2n$ 个结点与 $2m$ 条边的简单有向图，结点的标号为 $1, \overline{1}, 2, \overline{2}, \ldots, n, \overline{n}$。CNF 中的每个子句 $(x,y)$ 对应着蕴图中的两条边 $(\overline{x},y)$ 与 $(\overline{y},x)$。
+\end{definition}
+
+容易发现 2-CNF 与蕴图是双射关系，所以对于 2-CNF 的计数在后文会转为对可解的蕴图的计数。
+
+\begin{definition}[矛盾 SCC 与普通 SCC]
+    若蕴图中存在从 $x$ 到 $\overline{x}$ 与从 $\overline{x}$ 到 $x$ 的路径，则称 $x$ 是矛盾变量。在蕴图中，若 SCC 包含至少一个矛盾变量，则称其矛盾 SCC，否则称其普通 SCC。
+\end{definition}
+
+关于 SCC 的定义课上有提及，这里略去。
+
+\begin{definition}[类源、类汇与孤立 SCC]
+    称一个 SCC 是类源 (source-like) 的当且仅当不存在从该 SCC 外结点连向该 SCC 内结点的边；称其是类汇 (sink-like) 的当且仅当不存在从其内部结点连向其外结点的边。若其既类源也类汇，则称其是孤立 (isolated) 的。
+\end{definition}
+
+\begin{definition}[否定图]
+    考虑蕴图中的某个子图 $D$，定义 $D$ 的否定 $\overline{D}$ 为标号为 $D$ 否定标号且反转边的方向得到的新的图。形式化地，若 $D$ 中存在 $(x,y)$，则 $\overline{D}$ 中存在 $(\overline{y},\overline{x})$。
+\end{definition}
+
+由蕴图定义，$\overline{D}$ 仍是该蕴图的子图。
+
+\subsection{2-CNF 的性质}
+
+\begin{proposition}[矛盾 SCC 性质]
+    令 $C$ 为矛盾 SCC，则：
+    \begin{enumerate}
+        \item $C$ 中所有变量皆为矛盾变量；
+        \item 若 $C$ 是类源或类汇的，则它是孤立的；
+        \item 任意两矛盾 SCC 间不存在简单路径。
+    \end{enumerate}
+\end{proposition}
+
+\paragraph{Proof.}
+
+令 $x\rightsquigarrow y$ 表示存在一条从 $x$ 到 $y$ 的路径。
+
+对于第一条性质：若 $C$ 是矛盾 SCC，根据定义其包含至少一个矛盾变量，不妨为 $x$。令 $k$ 为 $C$ 中除 $x$ 外的另一个变量，则 $x\rightsquigarrow k, \overline{x}\rightsquigarrow k$。由于边的对称性，$\overline{k}\rightsquigarrow x, \overline{k}\rightsquigarrow \overline{x}$。又由于 $x\rightsquigarrow \overline{x}, \overline{x}\rightsquigarrow x$，拼接起来即可得到 $k\rightsquigarrow\overline{k}, \overline{k}\rightsquigarrow k$，所以 $k$ 是矛盾变量。
+
+对于第二条性质：不妨 $C$ 类源，假设存在 $x\in C, y\not\in C, x \rightsquigarrow y$，则 $\overline{y} \rightsquigarrow \overline{x}$。由第一条性质可知，$\overline{x}\in C, \overline{y}\not\in C$，这与 $C$ 类源是矛盾的，所以 $C$ 是孤立的。类汇同理，略。
+
+对于第三条性质：反证易证，略。
+
+\begin{proposition}[普通 SCC 性质]
+    令 $C$ 是普通 SCC，则：
+    \begin{enumerate}
+        \item $\overline{C}$ 与 $C$ 无交；
+        \item 若 $C$ 是类源的，则 $\overline{C}$ 是类汇的。
+    \end{enumerate}
+\end{proposition}
+
+\paragraph{Proof.} 第一条性质容易证明：若有交，则 $C$ 存在矛盾变量。
+
+对于第二条性质：若 $\overline{C}$ 不是类汇的，则存在 $x\not \in \overline{C}, y \in \overline{C}, x\rightsquigarrow y$。由边的对称性，$\overline{y}\rightsquigarrow \overline{x}$，而注意到 $\overline{y} \in C, \overline{x} \not\in C$，这与 $C$ 类源是矛盾的，所以 $\overline{C}$ 是类汇的。
+
+\begin{proposition}[可满足性判定]
+    2-CNF 是可满足的当且仅当其蕴图不存在矛盾变量。
+\end{proposition}
+
+\paragraph{Proof.} 归纳证明，不妨包含更少变量的 2-CNF 此结论都成立。
+
+\begin{itemize}
+    \item 必要性：反证易证，略。
+    \item 充分性：蕴图一定包含至少一个类源 SCC，记作 $C$。由于其不存在矛盾变量，则 $C$ 是普通的。由 Proposition 1.2 可知 $\overline{C}$ 与 $C$ 无交，且是类汇的。令 $\overline{C}$ 全部为真，$C$ 全部为假，而后删除这两个子图中的所有变量，此时删除的蕴涵关系只有 $\mathrm{False} \to x$ 与 $x \to \mathrm{True}$ 的形式，都是永真的。而删除后的图是一个包含更少变量的 2-CNF 问题，所以结论是成立的。
+\end{itemize}
+
+\section{GGF 与箭积}
+
+关于 OGF 的定义与应用，在课上有所提及，这里略去。
+
+\subsection{EGF 与 GGF 的定义}
+
+若无特殊说明，下文全部用 $z$ 刻画点数，$w$ 刻画边数。
+
+\begin{definition}[EGF 与 GGF]
+    $\mathcal{A}$ 是一个有标号有向图族。令 $a_n(w)$ 表示 $\mathcal{A}$ 中，$n$ 个顶点的图的 OGF。定义级数序列 $(a_n(w))_{n=0}^{\infty}$ 的指数生成函数 (Exponential GF) $\mathrm A(z,w)$ 和图论生成函数 (Graphic GF) $\mathbf{A}(z,w)$ 为：
+
+$$
+\mathrm A(z,w) = \sum_{n\ge 0} a_n(w)\dfrac{z^n}{n!},\quad 
+\mathbf{A}(z,w) = \sum_{n\ge 0} \dfrac{a_n(w)}{(1+w)^{\binom n2}}\dfrac{z^n}{n!}
+$$
+
+\end{definition}
+
+二者使用粗体进行区分。英文语境下 graph 特指无向图，而有向图是 digraph 或 directed graph，所以 GGF 名字中的 “graphic” 可能有误导。我们一般用 EGF 对无向图计数，而用 GGF 对有向图计数，但出于历史原因我们仍采用这个名字。
+
+\begin{lemma}
+令 $G(z,w)$ 表示全体有标号简单无向图的 EGF，$\mathbf{D}(z,w)$ 表示全体有标号简单有向图 GGF，$\mathbf{Set}(z,w)$ 表示全体没有边的有标号图的 GGF。
+
+\[\mathrm G(z,w) = \mathbf{D}(z,w) = \sum_{n\ge 0} (1+w)^{\binom n2} \dfrac{z^n}{n!}\]
+
+\[\mathbf{Set}(z,w) = \sum_{n\ge 0} \dfrac{1}{(1+w)^{\binom n2}} \dfrac{z^n}{n!}\]
+
+\end{lemma}
+
+\paragraph{Proof.} trivial.
+
+\subsection{组合运算}
+
+对于 symbolic method 相关理论，这里省略标号系统以及一些其他概念的定义。
+
+\begin{proposition}[不交并]
+    对于有标号简单有向图族 $\mathcal{A},\mathcal{B}$，其不交并的 EGF、GGF 为 $\mathrm A(z,w)+\mathrm B(z,w)$ 与 $\mathbf{A}(z,w)+\mathbf{B}(z,w)$。
+\end{proposition}
+
+\paragraph{Proof.} trivial.
+
+\begin{proposition}[有标号积]
+    对于有标号简单有向图族 $\mathcal{A},\mathcal{B}$，其有标号积（仅重新分配标号，不连边）的 EGF 为 $\mathrm A(z,w)\mathrm B(z,w)$。
+\end{proposition}
+
+\paragraph{Proof.} trivial.
+
+\begin{definition}[箭积, arrow product]
+    对于有标号简单有向图族 $\mathcal{A},\mathcal{B}$，定义 $\mathcal{A},\mathcal{B}$ 的箭积由其有标号积中的所有重标号的有序二元组 $(A,B)$ 组成，且对每个 $A$ 中的顶点，都向 $B$ 中任一顶点子集连边。
+\end{definition}
+
+\begin{proposition}
+    有标号简单有向图族 $\mathcal{A},\mathcal{B}$ 箭积的 GGF 为 $\mathbf{A}(z,w)\mathbf{B}(z,w)$。
+\end{proposition}
+
+\paragraph{Proof.} 不妨其箭积为 $\mathcal{C}$。令 $a_n(w),b_n(w),c_n(w)$ 为族 $\mathcal{A},\mathcal{B},\mathcal{C}$ 中 $n$ 个结点的图的 OGF，$\mathbf{A}(z,w),\mathbf{B}(z,w),\mathbf{C}(z,w)$ 为其 GGF。则根据箭积的定义，存在如下关系：
+
+\[
+c_n(w) = \sum_{i=0}^n \binom{n}{i} (1+w)^{i(n-i)}a_i(w)b_{n-i}(w)
+\]
+
+代入 GGF：
+
+\[\begin{aligned}
+\mathbf{C}(z,w) &= \sum_{n\ge 0} \dfrac{c_n(w)}{(1+w)^{\binom n2}}\dfrac{z^n}{n!}\\
+&= \sum_{n\ge 0} \sum_{i=0}^n \binom{n}{i} (1+w)^{i(n-i)-\binom n2}a_i(w)b_{n-i}(w) \dfrac{z^n}{n!}\\
+&= \sum_{n\ge 0} \sum_{i=0}^n \binom{n}{i} \left(\dfrac{a_i(w)}{(1+w)^{\binom i2}}\dfrac{z^i}{i!}\right)\left( \dfrac{b_{n-i}(w)}{(1+w)^{\binom {n-i}2}}\dfrac{z^{n-i}}{(n-i)!} \right)\\
+&= \mathbf{A}(z,w)\mathbf{B}(z,w)
+\end{aligned}\]
+
+这样就完成了证明。
+
+但此时 EGF 和 GGF 符号化构造没有统一，我们还需要定义指数 Hadamard 积。
+
+\begin{definition}[指数 Hadamard 积]
+    对于两个形式幂级数 $A(z)$ 与 $B(z)$：
+    \[\mathrm A(z) = \sum_{n\ge 0} a_n\dfrac{z^n}{n!},\quad \mathrm B(z) = \sum_{n\ge 0} b_n\dfrac{z^n}{n!}\]
+    定义其关于 $z$ 的指数 Hadamard 积 $\mathrm A(z) \odot_z \mathrm B(z)$ 为：
+    \[\mathrm A(z) \odot_z \mathrm B(z) = \sum_{n\ge 0} a_nb_n\dfrac{z^n}{n!}\]
+\end{definition}
+
+
+\begin{proposition}
+    族 $\mathcal{A}$ 的 EGF,GGF 分别为 $\mathrm A(z,w), \mathbf{A}(z,w)$，则：
+    \[\begin{aligned}
+\mathbf{A}(z,w) &= \mathrm A(z,w) \odot \mathbf{Set}(z,w)\\
+\mathrm A(z,w) &= \mathbf{A}(z,w) \odot \mathrm G(z,w)
+\end{aligned}\]
+\end{proposition}
+
+\paragraph{Proof.} trivial.
+
+\begin{proposition}
+    对于任何实数 $\alpha$ 与形式幂级数 $A(z),B(z)$，有：
+    \[A(\alpha z) \odot B(z) = A(z) \odot B(\alpha z)\]
+\end{proposition}
+
+\paragraph{Proof.} trivial.
+
+\section{DAG 与 SCC 计数}
+
+简单描述一下传统的方法：在 DAG 的基础上去除一个源点的子集得到一个规模更小的 DAG，这一步使用容斥原理解决，这样就可以写出递推式，而后将其改写为 EGF 形式即可。这个方法不多做说明，我们主要介绍如何应用上面的理论。
+
+首先容易想到使用点集与任意 DAG 做箭积，得到的是源点被二染色的 DAG，这是可以通过增设一元刻画源点来表示的。
+
+\begin{lemma}
+    令 $\mathbf{DAG}(z,w,u)$ 表示标记源点的 DAG 的 GGF，其中 $u$ 刻画源点。则：
+    \[\mathbf{Set}(zu,w)\mathbf{DAG}(z,w,1) = \mathbf{DAG}(z,w,u+1)\]
+\end{lemma}
+
+\paragraph{Proof.} 从左到右的单射证明是显然的；考虑箭积中的二元组，使被 $u$ 标记的源点来自点集而不被标记的源点来自 DAG，则从右到左也是单射。所以左右两边是双射。
+
+\begin{theorem}
+    令 $\mathbf{DAG}(z,w)$ 表示 DAG 的 GGF，则：
+    \[\mathbf{DAG}(z,w) = \dfrac 1{\mathbf{Set}(-z,w)}\]
+\end{theorem}
+
+\paragraph{Proof.} 注意到 $\mathbf{DAG}(z,w,0) = 1$，代入 $u=-1$ 至 Lemma 4.1 立得。实际上代入 $u=-1$ 的过程就是对应传统方法的容斥，但是直接使用 GF 去叙述简洁太多。
+
+\begin{theorem}
+    令 $\operatorname{SCC}(z,w)$ 表示强连通图的 EGF，则：
+    \[\operatorname{SCC}(z,w) = -\ln\left(\mathrm G(z,w) \odot \dfrac{1}{\mathbf D(z,w)}\right)\]
+\end{theorem}
+
+\paragraph{Proof.} 注意到任意有向图都可以分解为由 SCC 组成的 DAG，这部分其实是 trivial 的。
+
+简单描述一下过程：原先的点集对应 SCC 带标号积的生成集合，也就是 $e^{u \operatorname{SCC}(z,w)}$。我们同理定义 $\mathbf{D}(z,w,u+1)$ 并与 Theorem 4.2 相似地去证明。
+
+
+\[
+\begin{aligned}
+\mathbf{D}(z,w,u+1) &= \left(\mathbf{Set}(z,w) \odot e^{u \operatorname{SCC}(z,w)}\right) \mathbf D(z,w)\\
+1 &= \left(\mathbf{Set}(z,w) \odot e^{- \operatorname{SCC}(z,w)}\right) \mathbf D(z,w)\\
+\operatorname{SCC}(z,w) &= -\ln\left(\mathrm G(z,w) \odot \dfrac{1}{\mathbf D(z,w)}\right)
+\end{aligned}
+\]
+
+
+\section{IGF 与蕴积}
+
+\subsection{IGF 的定义}
+
+\begin{definition}[蕴涵生成函数, Implication GF, IGF]
+    $\mathcal{B}$ 是一个蕴图族。令 $b_n(w)$ 表示 $\mathcal{B}$ 中，$2n$ 个顶点的图的 OGF，此时 $w$ 刻画边数的一半。定义级数序列 $(b_n(w))_{n=0}^{\infty}$ 的蕴涵生成函数 (Implication GF) $\ddot{\mathbf{B}}(z,w)$ 为：
+
+    \[\ddot{\mathbf{B}}(z,w) = \sum_{n\ge 0} \dfrac{b_n(w)}{(1+w)^{n(n-1)}}\dfrac{z^n}{2^nn!}\]
+\end{definition}
+
+与 GGF 用两个点进行区分。
+
+\begin{lemma}
+    令 $\ddot{\mathbf{Set}}(z,w)$ 表示没有边的蕴图的 IGF，则：
+    \[\ddot{\mathbf{Set}}(z,w) = \sum_{n\ge 0} \dfrac{1}{(1+w)^{n(n-1)}}\dfrac{z^n}{2^nn!}\]
+\end{lemma}
+
+\paragraph{Proof.} trivial.
+
+\subsection{组合运算}
+
+\begin{proposition}[不交并]
+    对于有标号蕴图族 $\mathcal{A},\mathcal{B}$，其不交并的 IGF 为 $\ddot{\mathbf{A}}(z,w)+\ddot{\mathbf{B}}(z,w)$。
+\end{proposition}
+
+\paragraph{Proof.} trivial.
+
+\begin{definition}[蕴积, implication product]
+    定义有标号简单有向图族 $\mathcal{A}$ 与有标号蕴图族 $\mathcal{B}$ 的蕴积，其包含以以下方式生成的蕴图：
+
+\begin{enumerate}
+    \item 任取有标号图 $A\in \mathcal{A}$ 与蕴图 $B\in \mathcal{B}$，不妨 $A,B$ 有 $n,2m$ 个结点；
+    \item 从 $\{1,2,\ldots, n+m\}$ 重分配标号（仅作数字的重分配，取反标记不变）；
+    \item 选取 $A$ 的任意一个子集打取反标记，而后将 $A$ 复制一份并全体取反，记作 $A'$；
+    \item 对于 $A$ 中每个结点 $x$，都向 $B$ 中任意子集连边。若连接了 $x\to y$，则必须同时连接 $\bar y\to \bar x$（其中 $\bar x \in A'$）。
+    \item $A$ 向 $A'$ 任意连边，但不能连 $(x,\bar x)$。若连接了 $x\to y$，则必须同时连接 $\bar y\to \bar x$。
+\end{enumerate}
+\end{definition}
+
+\begin{proposition}
+   有标号简单有向图族 $\mathcal{A}$ 与有标号蕴图族 $\mathcal{B}$ 的箭积的 IGF 为 $\mathbf{A}(z,w)\cdot \ddot{\mathbf{B}}(z,w)$。
+\end{proposition}
+
+\paragraph{Proof.} 先讨论上述过程中每一步的方案数：第二步 $\binom{n+m}{n}$ 种方案，第三步选取子集 $2^n$ 种，第四步左边 $2m$ 右边 $n$ 一共 $(1+w)^{2mn}$，第五步注意到 $\bar y\in A$ 所以相当于边已被两两配对，所以是 $(1+w)^{\binom{n}{2}}$。
+
+令 $\ddot{\mathbf{C}}(z,w)$ 为其箭积的 IGF，令 $a_n(w),b_n(w),c_n(w)$ 为族 $\mathcal{A},\mathcal{B},\mathcal{C}$ 中 $n$ 个结点的图的 OGF。
+
+\[
+\begin{aligned}
+c_n(w)&=\sum_{i=0} \binom{n}{i} 2^i (1+w)^{2i(n-i)+\binom i2} a_i(w)b_{n-i}(w)\\
+&=\sum_{i=0} \binom{n}{i} 2^n (1+w)^{n(n-i)+n(i-1)} \dfrac{a_i(w)}{(1+w)^{\binom{i}{2}}} \cdot \dfrac{1}{(1+w)^{(n-i)(n-i-1)}}\dfrac{b_{n-i}(w)}{2^{n-i}}\\
+\dfrac{c_n(w)}{n! 2^n (1+w)^{n(n-1)}}&=\sum_{i=0} \dfrac{a_i(w)}{(1+w)^{\binom{i}{2}}i!} \cdot \dfrac{1}{(1+w)^{(n-i)(n-i-1)}}\dfrac{b_{n-i}(w)}{2^{n-i}(n-i)!}\\
+[z^n]\ddot{\mathbf{C}}(z,w)&=\sum_{i=0} [z^i]\mathbf{A}(z,w)\cdot [z^{n-i}]\ddot{\mathbf{B}}(z,w)\\
+\ddot{\mathbf{C}}(z,w)&=\mathbf{A}(z,w)\cdot \ddot{\mathbf{B}}(z,w)\\
+\end{aligned}
+\]
+
+
+\begin{proposition}
+    族 $\mathcal{A}$ 的 EGF,IGF 分别为 $\mathrm A(z,w), \ddot{\mathbf{A}}(z,w)$，则：
+    \[\begin{aligned}
+\ddot{\mathbf{A}}(z,w) = A(z,w) \odot \ddot{\mathbf{Set}}(z,w)\\
+A(z,w) = \ddot{\mathbf{A}}(z,w) \odot D(2z,w)
+\end{aligned}\]
+\end{proposition}
+
+\paragraph{Proof.} trivial.
+
+\section{可满足的 2-SAT 问题的计数}
+
+既然所有 SCC 都是普通 SCC，首先我们有一个初步的想法，模仿 DAG 计数那样将类源 SCC 黑白染色，合并的时候拿一个 SCC 做蕴积。但这样我们就遇到了一个问题：孤立的普通 SCC 显然应该成对产出，但是我们原先的染色方案会任意对二者染色，由此双射就无法形成。
+
+修正以下我们所套用的的方案，我们需要多引入一个元来刻画对于孤立 SCC 的处理。
+
+\begin{lemma}
+    仅由两个普通 SCC 组成且两 SCC 一黑一白的有色蕴图的 EGF 为 $\operatorname{SCC}(2z,w)$。
+\end{lemma}
+
+\paragraph{Proof.} 考虑黑色的 SCC，如果默认所有编号不带取反标记，那么生成该 SCC 时每个点编号是否取反有两种选择，故为 $\operatorname{SCC}(2z,w)$。
+
+\begin{theorem}
+    令 $\operatorname{SAT}(z,w,u,v)$ 表示全体可满足的 2-CNF 的蕴图的 EGF，其中 $u$ 刻画非隔离的类源普通 SCC，$v$ 刻画隔离普通 SCC 对（隔离普通 SCC 数量的一半）；$\ddot{\mathbf{SAT}}(z,w)$ 表示全体可满足的 2-CNF 的蕴图的 GGF。有：
+    \[\operatorname{SAT}(z,w,u+1,2u+2v+1) = \left(\left(\left(e^{u\operatorname{SCC}(z,w)}\odot \mathbf{Set}(z,w)\right) \ddot{\mathbf{SAT}}(z,w)\right)\odot D(2z,w)\right)e^{v\operatorname{SCC}(2z,w)}\]
+\end{theorem}
+
+\paragraph{Proof.} 令族 $\mathcal F$ 包含满足以下条件的有色蕴图：
+
+\begin{itemize}
+    \item 一开始所有点皆为无色。
+    \item 对于非隔离类源普通 SCC，挑选出一个子集，并染成黑色；
+    \item 隔离普通 SCC 是成对出现的。挑选出所有隔离普通 SCC 对的一个子集 $T$，对于 $T$ 的每个 SCC 对，将其中之一染成黑或白色。
+\end{itemize}
+
+根据定义，不加证明地指出 $\mathcal F$ 的 EGF 是 $\operatorname{SAT}(z,w,u+1,2u+2v+1)$，接下来说明右式的含义。
+
+考虑 $\mathcal F$ 的生成方式，无色点的 IGF 为 $\ddot{\mathbf{SAT}}(z,w,1,1)$，它需要先跟一块黑点做蕴积，再跟一块白点做带标号积。
+
+\begin{itemize}
+    \item 黑点是普通 SCC 做带标号积的生成集合，其 EGF 为 $e^{u\operatorname{SCC}(z,w)}$，GGF 为 $e^{u\operatorname{SCC}(z,w)}\odot \mathbf{Set}(z,w)$。
+    \item 白点是普通 SCC 对做带标号积的生成集合，根据 Lemma 5.1，EGF 为 $e^{v\operatorname{SCC}(2z,w)}$。
+\end{itemize}
+
+所以 $\mathcal F$ 的 EGF 也等于右式。
+
+\begin{lemma}
+$\operatorname{SAT}(z,w,0,v) = e^{v\operatorname{SCC}(2z,w)/2}$.
+\end{lemma}
+
+\paragraph{Proof.} $\operatorname{SAT}(z,w,0,v)$ 的意义是不存在非孤立普通 SCC 的可满足的 2-CNF 问题的蕴图的 EGF，即无序的普通 SCC 二元组做带标号积的生成集合。
+
+\begin{theorem}
+    令 $\ddot{\mathbf{SAT}}(z,w)$ 表示全体可满足的 2-CNF 的蕴图的 GGF，则：
+\[\ddot{\mathbf{SAT}}(z,w) = \left(\sqrt{\mathrm G(z,w) \odot \dfrac{1}{G(z,w)}} \odot \ddot{\mathbf{Set}}(2z,w)\right) G(z,w)\]
+\end{theorem}
+
+\paragraph{Proof.} 将 $u=-1$ 代入 Lemma 6.2，并对左式应用 Lemma 6.3：
+
+\[e^{(2v-1)\operatorname{SCC}(2z,w)/2} = \left(\left(\left(e^{-\operatorname{SCC}(z,w)}\odot \mathbf{Set}(z,w)\right) \ddot{\mathbf{SAT}}(z,w)\right)\odot D(2z,w)\right)e^{v\operatorname{SCC}(2z,w)}\]
+\[e^{-\operatorname{SCC}(2z,w)/2} = \left(\left(e^{-\operatorname{SCC}(z,w)}\odot \mathbf{Set}(z,w)\right) \ddot{\mathbf{SAT}}(z,w)\right)\odot D(2z,w)\]
+\[e^{-\operatorname{SCC}(2z,w)/2} \odot \ddot{\mathbf{Set}}(z,w)= \left(e^{-\operatorname{SCC}(z,w)}\odot \mathbf{Set}(z,w)\right) \ddot{\mathbf{SAT}}(z,w)\]
+\[\ddot{\mathbf{SAT}}(z,w) = \dfrac{e^{-\operatorname{SCC}(2z,w)/2} \odot \ddot{\mathbf{Set}}(z,w)}{e^{-\operatorname{SCC}(z,w)}\odot \mathbf{Set}(z,w)}\]
+
+由 Theorem 3.3：
+
+\[
+\operatorname{SCC}(z,w) = -\ln\left(\mathrm G(z,w) \odot \dfrac{1}{\mathbf D(z,w)}\right)\]
+
+$$
+\begin{aligned}e^{-\operatorname{SCC}(z,w)} \odot \mathbf{Set}(z,w) &=\mathrm G(z,w) \odot \dfrac{1}{G(z,w)} \odot \mathbf{Set}(z,w)\\
+&= \dfrac{1}{G(z,w)}
+\end{aligned}
+$$
+
+代入并应用 Proposition 3.9：
+
+$$
+\begin{aligned}
+\ddot{\mathbf{SAT}}(z,w) &= \left(e^{-\operatorname{SCC}(2z,w)/2} \odot \ddot{\mathbf{Set}}(z,w)\right)\cdot G(z,w)\\
+&= \left(\sqrt{\mathrm G(z,w) \odot \dfrac{1}{G(z,w)}} \odot \ddot{\mathbf{Set}}(2z,w)\right)\cdot G(z,w)
+\end{aligned}
+$$
+
+\bibliographystyle{plain}
+
+\bibliography{a}
+
+\end{document}
